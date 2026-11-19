@@ -1,0 +1,795 @@
+{% extends "base.html" %}
+{% block title %}Controls — Camera Manager{% endblock %}
+
+{% block extra_styles %}
+.controls-page { max-width: 1500px; margin: 0 auto; padding: 24px 20px; }
+.page-header { margin-bottom: 20px; }
+.page-header h1 { font-size: 1.2rem; font-weight: 600; color: var(--text); margin: 0; }
+.page-header p { font-size: 0.85rem; color: var(--text-muted); margin: 2px 0 0; }
+
+.selector-row {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+}
+.selector-row select {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 0.875rem; color: var(--text); background: var(--bg);
+}
+
+.controls-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 14px;
+}
+.panel h2 {
+    font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #94a3b8; margin: 0 0 12px;
+}
+
+.pill-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 500;
+}
+.pill.on { background: rgba(34,197,94,0.1); color: var(--success); border: 1px solid var(--success); }
+.pill.off { background: rgba(100,116,139,0.1); color: var(--text-muted); border: 1px solid var(--border); }
+.pill.locked { background: rgba(245,158,11,0.1); color: var(--warning); border: 1px solid var(--warning); }
+
+.live-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.live-value { text-align: center; }
+.live-value .num { font-size: 1.3rem; font-weight: 600; color: var(--text); }
+.live-value .label { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.live-updated { font-size: 0.7rem; color: #94a3b8; margin-top: 10px; text-align: right; }
+
+.field-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.field-group label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+.field-group input[type=number] {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 0.875rem; color: var(--text); background: var(--bg); width: 100%;
+}
+.field-group input[type=range] { width: 100%; }
+.field-hint { font-size: 0.7rem; color: #94a3b8; margin-top: 2px; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.control-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 14px;
+}
+.toggle-switch {
+    position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+    position: absolute; cursor: pointer; inset: 0;
+    background: var(--border); border-radius: 22px; transition: 0.15s;
+}
+.toggle-slider::before {
+    content: ""; position: absolute; width: 16px; height: 16px;
+    left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.15s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--primary); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+.limitation-note {
+    font-size: 0.75rem; color: var(--text-muted); background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+    margin-top: 4px;
+}
+
+.seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 14px; }
+.seg button {
+    flex: 1; padding: 7px 8px; border: none; background: var(--bg); color: var(--text-muted);
+    font-size: 0.8rem; cursor: pointer; border-right: 1px solid var(--border);
+}
+.seg button:last-child { border-right: none; }
+.seg button:hover { color: var(--primary); }
+.seg button.active { background: var(--primary); color: #fff; }
+.slider-row { display: flex; align-items: center; gap: 10px; }
+.slider-row input[type=range] { flex: 1; }
+.slider-row input[type=number] { width: 84px; }
+.dimmed { opacity: 0.45; pointer-events: none; }
+
+.viewer-panel { position: sticky; top: calc(var(--navbar-h) + 12px); }
+.viewer-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.viewer-toolbar .btn { padding: 4px 10px; font-size: 0.78rem; }
+.viewer-toolbar .spacer { flex: 1; }
+.viewer-toolbar .stat { font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.viewer-wrap {
+    position: relative; width: 100%; height: min(72vh, 720px); min-height: 320px;
+    border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #0f172a;
+}
+.viewer-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.viewer-wrap.roi-mode canvas { cursor: crosshair; }
+.viewer-wrap.panning canvas { cursor: grabbing; }
+.viewer-msg {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: #94a3b8; font-size: 0.85rem; pointer-events: none; text-align: center; padding: 16px;
+}
+.viewer-hint { font-size: 0.72rem; color: var(--text-muted); margin-top: 8px; }
+.roi-current { font-size: 0.72rem; color: var(--text-muted); margin-top: 8px; }
+{% endblock %}
+
+{% block content %}
+<div class="controls-page">
+    <div class="page-header">
+        <h1>Camera Controls</h1>
+        <p>Live focus / exposure / ISO controls and status for a connected camera</p>
+    </div>
+
+    <div class="selector-row">
+        <label for="cameraSelect" style="font-size:0.85rem;color:var(--text-muted);">Camera</label>
+        <select id="cameraSelect" onchange="onCameraChange()"></select>
+    </div>
+
+    <div class="controls-grid">
+        <div>
+            <div class="panel">
+                <h2>Status</h2>
+                <div class="pill-row" id="statusPills">
+                    <span class="pill off">Auto Exposure: —</span>
+                    <span class="pill off">Auto Focus: —</span>
+                </div>
+                <div class="live-values" id="liveValues">
+                    <div class="live-value"><div class="num" id="valLens">—</div><div class="label">Lens Position</div></div>
+                    <div class="live-value"><div class="num" id="valExposure">—</div><div class="label">Exposure (µs)</div></div>
+                    <div class="live-value"><div class="num" id="valIso">—</div><div class="label">ISO</div></div>
+                </div>
+                <div class="live-updated" id="lastUpdated">Not yet refreshed</div>
+            </div>
+
+            <div class="panel">
+                <h2>Focus</h2>
+                <div class="seg" id="focusMode">
+                    <button type="button" data-mode="manual" onclick="setFocusMode('manual')">Manual</button>
+                    <button type="button" data-mode="trigger" onclick="setFocusMode('trigger')">Trigger AF</button>
+                    <button type="button" data-mode="continuous" onclick="setFocusMode('continuous')">Continuous</button>
+                </div>
+
+                <div class="field-group">
+                    <label>Lens Position (<span id="lensValue">—</span>) &mdash; moving the slider switches to manual</label>
+                    <div class="slider-row">
+                        <input type="range" id="lensSlider" min="1" max="254" step="1" value="130"
+                               oninput="onLensInput(this.value)">
+                        <input type="number" id="lensNumber" min="1" max="254" value="130"
+                               oninput="onLensInput(this.value)">
+                    </div>
+                    <div class="field-hint">Lower = infinity, higher = macro (1 – 254).</div>
+                </div>
+
+                <div class="field-group">
+                    <label>AF Lens Range (0 – 255, infinity &lt; macro)</label>
+                    <div class="two-col">
+                        <input type="number" id="afRangeInfinity" min="0" max="255" placeholder="infinity">
+                        <input type="number" id="afRangeMacro" min="0" max="255" placeholder="macro">
+                    </div>
+                    <button class="btn btn-secondary" style="margin-top:8px;" onclick="applyLensRange()">Apply Lens Range</button>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Exposure</h2>
+                <div class="seg" id="exposureMode">
+                    <button type="button" data-mode="auto" onclick="setExposureMode('auto')">Auto</button>
+                    <button type="button" data-mode="manual" onclick="setExposureMode('manual')">Manual</button>
+                </div>
+
+                <div class="field-group">
+                    <label>Exposure Time (µs, 1 – 33333) &mdash; log scale</label>
+                    <div class="slider-row">
+                        <input type="range" id="expSlider" min="0" max="1000" step="1" value="500"
+                               oninput="onManualExposureInput('slider')">
+                        <input type="number" id="expNumber" min="1" max="33333" value="5000"
+                               oninput="onManualExposureInput('number')">
+                    </div>
+                </div>
+                <div class="field-group">
+                    <label>ISO (100 – 1600)</label>
+                    <div class="slider-row">
+                        <input type="range" id="isoSlider" min="100" max="1600" step="50" value="100"
+                               oninput="onManualExposureInput('iso-slider')">
+                        <input type="number" id="isoNumber" min="100" max="1600" value="100"
+                               oninput="onManualExposureInput('iso-number')">
+                    </div>
+                    <div class="field-hint">Moving either slider switches to manual exposure.</div>
+                </div>
+
+                <div id="aeAutoOnly">
+                    <div class="control-row">
+                        <span style="font-size:0.875rem;">Lock auto exposure</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="aeLockToggle" onchange="sendControl('set_ae_lock', {locked: aeLockToggle.checked})">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="field-group">
+                        <label>Exposure Compensation (<span id="compValue">0</span>)</label>
+                        <input type="range" id="compSlider" min="-9" max="9" step="1" value="0"
+                               oninput="compValue.textContent = compSlider.value"
+                               onchange="sendControl('set_exposure_compensation', {value: parseInt(compSlider.value)})">
+                    </div>
+
+                    <div class="field-group">
+                        <label>Auto Exposure Time Limit (µs, 1 – 33333)</label>
+                        <input type="number" id="expLimitInput" min="1" max="33333" placeholder="33333">
+                        <button class="btn btn-secondary" style="margin-top:8px;" onclick="applyExposureLimit()">Apply Limit</button>
+                        <div class="limitation-note">
+                            Only exposure-time limit is controllable; the installed depthai build
+                            exposes no ISO-ceiling setter.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="panel viewer-panel">
+                <h2>Live View</h2>
+                <div class="viewer-toolbar">
+                    <button class="btn btn-secondary" onclick="viewerFit()">Fit</button>
+                    <button class="btn btn-secondary" onclick="viewerActualSize()">100%</button>
+                    <button class="btn btn-secondary" onclick="viewerZoomBy(1.5)">+</button>
+                    <button class="btn btn-secondary" onclick="viewerZoomBy(1/1.5)">&minus;</button>
+                    <button class="btn btn-secondary" id="pauseBtn" onclick="togglePause()">Pause</button>
+                    <span class="spacer"></span>
+                    <button class="btn btn-secondary" onclick="startRoiSelection('af')">Select AF Region</button>
+                    <button class="btn btn-secondary" onclick="startRoiSelection('ae')">Select AE Region</button>
+                    <button class="btn btn-primary" id="roiConfirmBtn" style="display:none;" onclick="confirmRoi()">Confirm</button>
+                    <button class="btn btn-secondary" id="roiCancelBtn" style="display:none;" onclick="cancelRoi()">Cancel</button>
+                </div>
+                <div class="viewer-wrap" id="viewerWrap">
+                    <canvas id="viewerCanvas"></canvas>
+                    <div class="viewer-msg" id="viewerMsg">Waiting for a frame…</div>
+                </div>
+                <div class="toolbar-stats" style="display:flex;justify-content:space-between;margin-top:6px;">
+                    <span class="stat viewer-hint" id="viewerZoomInfo">—</span>
+                    <span class="stat viewer-hint" id="viewerFps">—</span>
+                </div>
+                <div class="viewer-hint">Scroll to zoom · drag to pan · double-click to fit.
+                    Region selection freezes the frame, then drag a box and press Confirm.</div>
+                <div class="roi-current" id="roiCurrent"></div>
+                <div class="limitation-note">
+                    Regions are sticky — once set, they remain active until changed again or the
+                    camera reconnects. There is no depthai API to clear a region back to full-frame.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _cameraConfig = {};
+let _currentCamId = null;
+let _currentCamType = 'color';
+let _lastLive = {};
+
+document.addEventListener('DOMContentLoaded', () => {
+    initViewer();
+    loadCameraList();
+    setInterval(loadControlState, 3000);
+});
+
+async function loadCameraList() {
+    try {
+        const resp = await fetch('/api/camera_config');
+        if (!resp.ok) { showFlash('Failed to load camera list', 'error'); return; }
+        _cameraConfig = await resp.json();
+        const select = document.getElementById('cameraSelect');
+        select.innerHTML = Object.entries(_cameraConfig).map(([name, cam]) =>
+            `<option value="${escHtml(name)}">${escHtml(name)} (${escHtml(cam.camera_type || 'color')})</option>`
+        ).join('');
+        const first = Object.keys(_cameraConfig)[0];
+        if (first) {
+            _currentCamId = first;
+            _currentCamType = _cameraConfig[first].camera_type || 'color';
+            loadControlState();
+        }
+    } catch (e) {
+        showFlash('Could not reach server', 'error');
+    }
+}
+
+function onCameraChange() {
+    const select = document.getElementById('cameraSelect');
+    _currentCamId = select.value;
+    _currentCamType = (_cameraConfig[_currentCamId] || {}).camera_type || 'color';
+    cancelRoi();
+    viewerReset();
+    loadControlState();
+}
+
+async function loadControlState() {
+    if (!_currentCamId) return;
+    try {
+        const resp = await fetch(`/api/cameras/${encodeURIComponent(_currentCamId)}/control_state?cam_type=${encodeURIComponent(_currentCamType)}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderControlState(data);
+    } catch (e) {
+        // Silent — this is a background poll; a one-off failure isn't worth a flash.
+    }
+}
+
+// Don't clobber a field the user is currently editing with a polled value.
+function setIfIdle(el, value) {
+    if (document.activeElement !== el) el.value = value;
+}
+
+function setSeg(id, mode) {
+    document.querySelectorAll(`#${id} button`).forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+}
+
+function renderControlState(data) {
+    const live = data.live || {};
+    const commanded = data.commanded || {};
+    _lastLive = live;
+
+    document.getElementById('valLens').textContent = live.lens_position ?? '—';
+    document.getElementById('valExposure').textContent = live.exposure_time_us != null ? Math.round(live.exposure_time_us) : '—';
+    document.getElementById('valIso').textContent = live.iso ?? '—';
+    document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+    const aePill = commanded.auto_exposure_enabled
+        ? (commanded.ae_lock ? '<span class="pill locked">Auto Exposure: ON (locked)</span>' : '<span class="pill on">Auto Exposure: ON</span>')
+        : '<span class="pill off">Auto Exposure: OFF (manual)</span>';
+    const afPill = commanded.auto_focus_enabled
+        ? `<span class="pill on">Auto Focus: ON (${escHtml(commanded.af_mode || 'AUTO')})</span>`
+        : '<span class="pill off">Auto Focus: OFF (manual)</span>';
+    document.getElementById('statusPills').innerHTML = aePill + afPill;
+
+    // Focus mode
+    const focusMode = !commanded.auto_focus_enabled ? 'manual'
+        : (commanded.af_mode === 'AUTO' ? 'trigger' : 'continuous');
+    setSeg('focusMode', focusMode);
+    const lens = commanded.manual_lens_position ?? live.lens_position;
+    if (lens != null && document.activeElement !== document.getElementById('lensSlider')
+            && document.activeElement !== document.getElementById('lensNumber')) {
+        setLensUi(lens);
+    }
+
+    // Exposure mode
+    const auto = !!commanded.auto_exposure_enabled;
+    setSeg('exposureMode', auto ? 'auto' : 'manual');
+    document.getElementById('aeAutoOnly').classList.toggle('dimmed', !auto);
+    const expUs = commanded.manual_exposure_us ?? live.exposure_time_us;
+    const iso = commanded.manual_iso ?? live.iso;
+    const active = document.activeElement;
+    if (expUs != null && active !== _el('expSlider') && active !== _el('expNumber')) setExposureUi(expUs);
+    if (iso != null && active !== _el('isoSlider') && active !== _el('isoNumber')) setIsoUi(iso);
+
+    document.getElementById('aeLockToggle').checked = !!commanded.ae_lock;
+    if (active !== _el('compSlider')) {
+        _el('compSlider').value = commanded.exposure_compensation ?? 0;
+        _el('compValue').textContent = commanded.exposure_compensation ?? 0;
+    }
+    setIfIdle(_el('expLimitInput'), commanded.exposure_limit_us ?? '');
+    if (commanded.af_lens_range) {
+        setIfIdle(_el('afRangeInfinity'), commanded.af_lens_range[0]);
+        setIfIdle(_el('afRangeMacro'), commanded.af_lens_range[1]);
+    }
+
+    const roiBits = [];
+    if (commanded.af_region) roiBits.push(`AF region: [${commanded.af_region.join(', ')}]`);
+    if (commanded.ae_region) roiBits.push(`AE region: [${commanded.ae_region.join(', ')}]`);
+    document.getElementById('roiCurrent').textContent = roiBits.join(' · ') || 'No regions set';
+}
+
+function _el(id) { return document.getElementById(id); }
+
+async function sendControl(action, params, opts = {}) {
+    if (!_currentCamId) { if (!opts.quiet) showFlash('No camera selected', 'error'); return false; }
+    try {
+        const resp = await fetch(`/api/cameras/${encodeURIComponent(_currentCamId)}/control`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ cam_type: _currentCamType, action, params }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) { showFlash(errorText(result, 'Action failed'), 'error'); return false; }
+        if (!opts.quiet) { showFlash('Applied', 'success'); loadControlState(); }
+        return true;
+    } catch (e) {
+        showFlash('Connection error', 'error');
+        return false;
+    }
+}
+
+// Slider drags fire dozens of events/sec; send at most one per interval, always ending on the last value.
+function makeThrottle(fn, ms) {
+    let timer = null, pending = null, lastRun = 0;
+    return (...args) => {
+        pending = args;
+        const wait = ms - (Date.now() - lastRun);
+        if (wait <= 0) { lastRun = Date.now(); fn(...pending); pending = null; return; }
+        if (!timer) timer = setTimeout(() => { timer = null; lastRun = Date.now(); fn(...pending); pending = null; }, wait);
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Focus
+// ---------------------------------------------------------------------------
+
+function clampInt(v, lo, hi) { return Math.min(hi, Math.max(lo, Math.round(Number(v)))); }
+
+function setLensUi(v) {
+    v = clampInt(v, 1, 254);
+    _el('lensSlider').value = v;
+    _el('lensNumber').value = v;
+    _el('lensValue').textContent = v;
+}
+
+const _sendLens = makeThrottle(v => sendControl('set_focus', { lens_position: v }, { quiet: true }), 120);
+
+function onLensInput(raw) {
+    if (raw === '' || isNaN(Number(raw))) return;
+    const v = clampInt(raw, 1, 254);
+    setLensUi(v);
+    setSeg('focusMode', 'manual');
+    _sendLens(v);
+}
+
+function setFocusMode(mode) {
+    if (mode === 'manual') {
+        // Start from where the lens currently is (live metadata) rather than the slider's stale value.
+        const start = _lastLive.lens_position != null ? _lastLive.lens_position : _el('lensSlider').value;
+        setLensUi(start);
+        sendControl('set_focus', { lens_position: clampInt(start, 1, 254) });
+    } else if (mode === 'trigger') {
+        sendControl('trigger_auto_focus', {});
+    } else {
+        sendControl('continuous_auto_focus', {});
+    }
+}
+
+function applyLensRange() {
+    const infinity = parseInt(document.getElementById('afRangeInfinity').value);
+    const macro = parseInt(document.getElementById('afRangeMacro').value);
+    if (isNaN(infinity) || isNaN(macro)) { showFlash('Enter both lens range values', 'error'); return; }
+    if (infinity >= macro) { showFlash('Infinity position must be less than macro position', 'error'); return; }
+    sendControl('set_af_lens_range', { infinity_pos: infinity, macro_pos: macro });
+}
+
+// ---------------------------------------------------------------------------
+// Exposure
+// ---------------------------------------------------------------------------
+
+const EXP_MAX_US = 33333;
+function sliderToUs(pos) { return clampInt(Math.exp((pos / 1000) * Math.log(EXP_MAX_US)), 1, EXP_MAX_US); }
+function usToSlider(us) { return Math.round((Math.log(clampInt(us, 1, EXP_MAX_US)) / Math.log(EXP_MAX_US)) * 1000); }
+
+function setExposureUi(us) {
+    us = clampInt(us, 1, EXP_MAX_US);
+    _el('expNumber').value = us;
+    _el('expSlider').value = usToSlider(us);
+}
+function setIsoUi(iso) {
+    iso = clampInt(iso, 100, 1600);
+    _el('isoNumber').value = iso;
+    _el('isoSlider').value = Math.round(iso / 50) * 50;
+}
+
+function currentManualExposure() {
+    return {
+        exposure_us: clampInt(_el('expNumber').value || 1, 1, EXP_MAX_US),
+        iso: clampInt(_el('isoNumber').value || 100, 100, 1600),
+    };
+}
+
+const _sendManualExposure = makeThrottle(p => sendControl('set_exposure', p, { quiet: true }), 120);
+
+function onManualExposureInput(source) {
+    if (source === 'slider') setExposureUi(sliderToUs(_el('expSlider').value));
+    else if (source === 'iso-slider') _el('isoNumber').value = _el('isoSlider').value;
+    else if (source === 'iso-number') { if (_el('isoNumber').value === '') return; _el('isoSlider').value = Math.round(clampInt(_el('isoNumber').value, 100, 1600) / 50) * 50; }
+    else if (source === 'number') { if (_el('expNumber').value === '') return; _el('expSlider').value = usToSlider(_el('expNumber').value); }
+    setSeg('exposureMode', 'manual');
+    _el('aeAutoOnly').classList.add('dimmed');
+    _sendManualExposure(currentManualExposure());
+}
+
+function setExposureMode(mode) {
+    if (mode === 'auto') {
+        sendControl('set_auto_exposure', {});
+        return;
+    }
+    // Start manual from what the sensor is doing now so the image doesn't jump.
+    if (_lastLive.exposure_time_us != null) setExposureUi(_lastLive.exposure_time_us);
+    if (_lastLive.iso != null) setIsoUi(_lastLive.iso);
+    sendControl('set_exposure', currentManualExposure());
+}
+
+function applyExposureLimit() {
+    const maxUs = parseInt(document.getElementById('expLimitInput').value);
+    if (isNaN(maxUs)) { showFlash('Enter an exposure limit', 'error'); return; }
+    sendControl('set_exposure_limit', { max_us: maxUs });
+}
+
+// ---------------------------------------------------------------------------
+// Live viewer: polled JPEG on a canvas with wheel-zoom, drag-pan, and ROI selection
+// ---------------------------------------------------------------------------
+
+const V = {
+    canvas: null, ctx: null, wrap: null,
+    img: null,              // ImageBitmap of the latest frame
+    scale: 1, ox: 0, oy: 0, // image->css-px transform: css = img * scale + offset
+    userZoomed: false,      // once true, new frames/resizes no longer re-fit
+    paused: false,
+    dragging: false, dragLast: null,
+    roiTarget: null,        // 'af' | 'ae' | null
+    roiStart: null, roiEnd: null, roiDragging: false,
+    loopToken: 0,
+    frameTimes: [],
+};
+
+function initViewer() {
+    V.wrap = _el('viewerWrap');
+    V.canvas = _el('viewerCanvas');
+    V.ctx = V.canvas.getContext('2d');
+
+    new ResizeObserver(() => { resizeCanvas(); }).observe(V.wrap);
+    V.canvas.addEventListener('wheel', onViewerWheel, { passive: false });
+    V.canvas.addEventListener('pointerdown', onViewerDown);
+    V.canvas.addEventListener('pointermove', onViewerMove);
+    V.canvas.addEventListener('pointerup', onViewerUp);
+    V.canvas.addEventListener('pointercancel', onViewerUp);
+    V.canvas.addEventListener('dblclick', viewerFit);
+    resizeCanvas();
+    frameLoop(++V.loopToken);
+}
+
+function viewerReset() {
+    V.img = null;
+    V.userZoomed = false;
+    V.frameTimes = [];
+    _el('viewerMsg').style.display = 'flex';
+    _el('viewerMsg').textContent = 'Waiting for a frame…';
+    draw();
+}
+
+function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = V.wrap.clientWidth, h = V.wrap.clientHeight;
+    V.canvas.width = Math.max(1, Math.round(w * dpr));
+    V.canvas.height = Math.max(1, Math.round(h * dpr));
+    if (V.img && !V.userZoomed) fitTransform();
+    draw();
+}
+
+function fitScale() {
+    if (!V.img) return 1;
+    return Math.min(V.wrap.clientWidth / V.img.width, V.wrap.clientHeight / V.img.height);
+}
+
+function fitTransform() {
+    V.scale = fitScale();
+    V.ox = (V.wrap.clientWidth - V.img.width * V.scale) / 2;
+    V.oy = (V.wrap.clientHeight - V.img.height * V.scale) / 2;
+}
+
+function viewerFit() {
+    if (!V.img) return;
+    V.userZoomed = false;
+    fitTransform();
+    draw();
+}
+
+// Zoom keeping the css point (cx, cy) fixed on screen.
+function zoomAt(factor, cx, cy) {
+    if (!V.img) return;
+    const min = fitScale() * 0.5, max = 40;
+    const next = Math.min(max, Math.max(min, V.scale * factor));
+    const k = next / V.scale;
+    V.ox = cx - (cx - V.ox) * k;
+    V.oy = cy - (cy - V.oy) * k;
+    V.scale = next;
+    V.userZoomed = true;
+    draw();
+}
+
+function viewerZoomBy(f) { zoomAt(f, V.wrap.clientWidth / 2, V.wrap.clientHeight / 2); }
+
+function viewerActualSize() {
+    if (!V.img) return;
+    zoomAt(1 / V.scale, V.wrap.clientWidth / 2, V.wrap.clientHeight / 2);
+}
+
+function cssPoint(e) {
+    const r = V.canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function toImage(p) { return { x: (p.x - V.ox) / V.scale, y: (p.y - V.oy) / V.scale }; }
+
+function clampToImage(q) {
+    return { x: Math.min(V.img.width, Math.max(0, q.x)), y: Math.min(V.img.height, Math.max(0, q.y)) };
+}
+
+function onViewerWheel(e) {
+    if (!V.img) return;
+    e.preventDefault();
+    const p = cssPoint(e);
+    zoomAt(Math.pow(1.0015, -e.deltaY), p.x, p.y);
+}
+
+function onViewerDown(e) {
+    if (!V.img) return;
+    V.canvas.setPointerCapture(e.pointerId);
+    const p = cssPoint(e);
+    if (V.roiTarget) {
+        V.roiDragging = true;
+        V.roiStart = V.roiEnd = clampToImage(toImage(p));
+    } else {
+        V.dragging = true;
+        V.dragLast = p;
+        V.wrap.classList.add('panning');
+    }
+}
+
+function onViewerMove(e) {
+    const p = cssPoint(e);
+    if (V.img) {
+        const q = toImage(p);
+        if (q.x >= 0 && q.y >= 0 && q.x < V.img.width && q.y < V.img.height) {
+            _el('viewerZoomInfo').textContent =
+                `${Math.round(V.scale * 100)}% · x ${Math.floor(q.x)}, y ${Math.floor(q.y)} · ${V.img.width}×${V.img.height}`;
+        }
+    }
+    if (V.roiDragging) {
+        V.roiEnd = clampToImage(toImage(p));
+        draw();
+    } else if (V.dragging) {
+        V.ox += p.x - V.dragLast.x;
+        V.oy += p.y - V.dragLast.y;
+        V.dragLast = p;
+        V.userZoomed = true;
+        draw();
+    }
+}
+
+function onViewerUp(e) {
+    if (V.roiDragging) {
+        V.roiDragging = false;
+        V.roiEnd = clampToImage(toImage(cssPoint(e)));
+        const tooSmall = Math.abs(V.roiEnd.x - V.roiStart.x) < 5 || Math.abs(V.roiEnd.y - V.roiStart.y) < 5;
+        if (tooSmall) { V.roiStart = V.roiEnd = null; }
+        _el('roiConfirmBtn').style.display = tooSmall ? 'none' : 'inline-block';
+        draw();
+    }
+    V.dragging = false;
+    V.wrap.classList.remove('panning');
+}
+
+function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const ctx = V.ctx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, V.canvas.width, V.canvas.height);
+    if (!V.img) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Past 2x, show real pixels — blurring them would defeat judging focus.
+    ctx.imageSmoothingEnabled = V.scale < 2;
+    ctx.drawImage(V.img, V.ox, V.oy, V.img.width * V.scale, V.img.height * V.scale);
+    if (V.roiStart && V.roiEnd) {
+        const x = V.ox + Math.min(V.roiStart.x, V.roiEnd.x) * V.scale;
+        const y = V.oy + Math.min(V.roiStart.y, V.roiEnd.y) * V.scale;
+        const w = Math.abs(V.roiEnd.x - V.roiStart.x) * V.scale;
+        const h = Math.abs(V.roiEnd.y - V.roiStart.y) * V.scale;
+        ctx.strokeStyle = V.roiTarget === 'ae' ? '#f59e0b' : '#4a9eff';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(x, y, w, h);
+        ctx.setLineDash([]);
+    }
+}
+
+function setViewerMsg(text) {
+    const el = _el('viewerMsg');
+    el.style.display = text ? 'flex' : 'none';
+    el.textContent = text || '';
+}
+
+// Sequential fetch loop (next request only after the previous finishes, so a slow
+// camera never piles up requests). A new token cancels any older loop.
+async function frameLoop(token) {
+    while (token === V.loopToken) {
+        let delay = 150;
+        if (V.paused || document.hidden || !_currentCamId) {
+            delay = 300;
+        } else {
+            const camId = _currentCamId;
+            try {
+                const resp = await fetch(`/api/cameras/${encodeURIComponent(camId)}/frame?_=${Date.now()}`, { cache: 'no-store' });
+                if (camId !== _currentCamId || V.paused) continue; // camera switched / paused mid-flight
+                if (resp.ok) {
+                    const bmp = await createImageBitmap(await resp.blob());
+                    if (camId !== _currentCamId || V.paused) { bmp.close(); continue; }
+                    const sizeChanged = !V.img || V.img.width !== bmp.width || V.img.height !== bmp.height;
+                    if (V.img) V.img.close();
+                    V.img = bmp;
+                    if (sizeChanged && !V.userZoomed) fitTransform();
+                    setViewerMsg('');
+                    draw();
+                    noteFrame();
+                } else {
+                    if (!V.img) setViewerMsg('No frame available for this camera yet');
+                    delay = 1000;
+                }
+            } catch (e) {
+                if (!V.img) setViewerMsg('Could not fetch frame');
+                delay = 1000;
+            }
+        }
+        await new Promise(r => setTimeout(r, delay));
+    }
+}
+
+function noteFrame() {
+    const now = performance.now();
+    V.frameTimes.push(now);
+    while (V.frameTimes.length && now - V.frameTimes[0] > 2000) V.frameTimes.shift();
+    if (V.frameTimes.length > 1) {
+        const fps = (V.frameTimes.length - 1) / ((now - V.frameTimes[0]) / 1000);
+        _el('viewerFps').textContent = fps.toFixed(1) + ' fps';
+    }
+}
+
+function togglePause() {
+    V.paused = !V.paused;
+    _el('pauseBtn').textContent = V.paused ? 'Resume' : 'Pause';
+}
+
+// ---------------------------------------------------------------------------
+// ROI selection on the live view (image-pixel coordinates, independent of zoom)
+// ---------------------------------------------------------------------------
+
+function startRoiSelection(target) {
+    if (!_currentCamId) { showFlash('No camera selected', 'error'); return; }
+    if (!V.img) { showFlash('No frame available for this camera yet', 'error'); return; }
+    V.roiTarget = target;
+    V.roiStart = V.roiEnd = null;
+    V.paused = true; // freeze so the box is drawn on a still frame
+    _el('pauseBtn').textContent = 'Resume';
+    V.wrap.classList.add('roi-mode');
+    _el('roiConfirmBtn').style.display = 'none';
+    _el('roiCancelBtn').style.display = 'inline-block';
+    draw();
+}
+
+function confirmRoi() {
+    if (!V.roiStart || !V.roiEnd) return;
+    const x = Math.min(V.roiStart.x, V.roiEnd.x);
+    const y = Math.min(V.roiStart.y, V.roiEnd.y);
+    const w = Math.abs(V.roiEnd.x - V.roiStart.x);
+    const h = Math.abs(V.roiEnd.y - V.roiStart.y);
+    const action = V.roiTarget === 'af' ? 'set_focus_region' : 'set_exposure_region';
+    sendControl(action, { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
+    cancelRoi();
+}
+
+function cancelRoi() {
+    const wasRoi = !!V.roiTarget;
+    V.roiTarget = null;
+    V.roiStart = V.roiEnd = null;
+    V.roiDragging = false;
+    V.wrap.classList.remove('roi-mode');
+    _el('roiConfirmBtn').style.display = 'none';
+    _el('roiCancelBtn').style.display = 'none';
+    if (wasRoi) { V.paused = false; _el('pauseBtn').textContent = 'Pause'; }
+    draw();
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}

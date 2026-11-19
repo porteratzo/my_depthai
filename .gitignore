@@ -1,0 +1,30 @@
+.vscode/settings.json
+.vscode/launch.json
+*.pyc
+*.egg-info
+*.gz
+*.whl
+databases
+__pycache__
+performance_*
+homography_stuff
+datatosave2
+square.txt
+rect.png
+
+# Test and coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+*.cover
+.hypothesis/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local benchmark output (comparison frames saved by benchmark_nv12.py)
+benchmark_images/

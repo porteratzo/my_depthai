@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Cameras — Camera Manager{% endblock %}
+
+{% block extra_styles %}
+.cameras-page { max-width: 860px; margin: 0 auto; padding: 24px 20px; }
+.page-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+}
+.page-header h1 { font-size: 1.2rem; font-weight: 600; color: var(--text); margin: 0; }
+.page-header p { font-size: 0.85rem; color: var(--text-muted); margin: 2px 0 0; }
+
+.camera-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 14px;
+    position: relative;
+}
+.camera-card-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+}
+.camera-card-header input[type=text] {
+    font-size: 1rem; font-weight: 600; border: none; border-bottom: 2px solid var(--border);
+    padding: 2px 4px; flex: 1; background: transparent; color: var(--text);
+    outline: none;
+}
+.camera-card-header input[type=text]:focus { border-bottom-color: var(--primary); }
+.remove-btn {
+    background: none; border: none; color: #cbd5e1; cursor: pointer;
+    font-size: 1.1rem; padding: 2px 6px; border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+}
+.remove-btn:hover { color: var(--error); background: rgba(239,68,68,0.07); }
+
+.field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px 16px;
+}
+.field-group { display: flex; flex-direction: column; gap: 4px; }
+.field-group label { font-size: 0.75rem; color: var(--text-muted); font-weight: 500; }
+.field-group input, .field-group select {
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: var(--text);
+    background: var(--bg);
+    transition: border-color 0.15s;
+}
+.field-group input:focus, .field-group select:focus {
+    outline: none; border-color: var(--primary);
+}
+.field-hint { font-size: 0.7rem; color: #94a3b8; margin-top: 2px; }
+
+.bottom-bar {
+    position: sticky; bottom: 0;
+    background: var(--bg); border-top: 1px solid var(--border);
+    padding: 12px 20px; margin: 0 -20px -24px;
+    display: flex; align-items: center; gap: 12px;
+    border-radius: 0 0 10px 10px;
+}
+.add-camera-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border: 1px dashed var(--border);
+    border-radius: 8px; background: none; cursor: pointer;
+    font-size: 0.875rem; color: var(--text-muted);
+    transition: border-color 0.15s, color 0.15s;
+    margin-bottom: 14px;
+}
+.add-camera-btn:hover { border-color: var(--primary); color: var(--primary); }
+.reload-spinner { display: none; font-size: 0.8rem; color: var(--text-muted); }
+{% endblock %}
+
+{% block content %}
+<div class="cameras-page">
+    <div class="page-header">
+        <div>
+            <h1>Camera Configuration</h1>
+            <p>my_depthai/configs/defaults/camera_manager_config.json</p>
+        </div>
+    </div>
+
+    <div id="cameraCards"></div>
+
+    <button class="add-camera-btn" onclick="addCamera()">
+        + Add Camera
+    </button>
+
+    <div class="bottom-bar">
+        <button class="btn btn-primary" onclick="applyAndReload()">Apply &amp; Reload</button>
+        <button class="btn btn-secondary" onclick="saveOnly()">Save Only</button>
+        <span class="reload-spinner" id="reloadSpinner">Reloading cameras…</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const CAMERA_TYPES = ['color', 'left', 'right'];
+const OUTPUT_TYPES = ['video', 'preview', 'still', 'fullvideo'];
+
+// Official DepthAI sensor resolutions
+const RESOLUTIONS = {
+    color: [
+        { label: '1080p  — 1920×1080', w: 1920, h: 1080 },
+        { label: '4K     — 3840×2160', w: 3840, h: 2160 },
+        { label: '12 MP  — 4056×3040', w: 4056, h: 3040 },
+        { label: '13 MP  — 4208×3120', w: 4208, h: 3120 },
+    ],
+    mono: [
+        { label: '400p   —  640×400',  w: 640,  h: 400  },
+        { label: '720p   — 1280×720',  w: 1280, h: 720  },
+        { label: '800p   — 1280×800',  w: 1280, h: 800  },
+    ],
+};
+
+function getResolutions(cameraType) {
+    return (cameraType === 'color') ? RESOLUTIONS.color : RESOLUTIONS.mono;
+}
+
+function buildResolutionOptions(cameraType, currentW, currentH) {
+    const list = getResolutions(cameraType);
+    let matched = false;
+    let html = list.map(r => {
+        const sel = (r.w === currentW && r.h === currentH);
+        if (sel) matched = true;
+        return `<option value="${r.w}x${r.h}" ${sel ? 'selected' : ''}>${r.label}</option>`;
+    }).join('');
+    // If the stored size doesn't match any official resolution, add it as a custom entry
+    if (!matched) {
+        html = `<option value="${currentW}x${currentH}" selected>Custom — ${currentW}×${currentH}</option>` + html;
+    }
+    return html;
+}
+
+let _config = {};
+let _counter = 0;
+
+document.addEventListener('DOMContentLoaded', loadConfig);
+
+async function loadConfig() {
+    try {
+        const resp = await fetch('/api/camera_config');
+        if (!resp.ok) { showFlash('Failed to load config', 'error'); return; }
+        _config = await resp.json();
+        renderAll();
+    } catch (e) {
+        showFlash('Could not reach server', 'error');
+    }
+}
+
+function renderAll() {
+    const container = document.getElementById('cameraCards');
+    container.innerHTML = '';
+    Object.entries(_config).forEach(([name, cam]) => {
+        container.appendChild(buildCard(name, cam));
+    });
+    _counter = Object.keys(_config).length;
+}
+
+function buildCard(name, cam) {
+    const settings = cam.settings || {};
+    const output   = (cam.outputs && cam.outputs[0]) || 'video';
+    const size     = (cam.sizes  && cam.sizes[0])   || [1920, 1080];
+    const fps      = (cam.fpss   && cam.fpss[0])    || 3;
+
+    const card = document.createElement('div');
+    card.className = 'camera-card';
+    card.dataset.origName = name;
+    card.dataset.settings = JSON.stringify(settings);
+
+    card.innerHTML = `
+        <div class="camera-card-header">
+            <input type="text" class="cam-name" value="${escHtml(name)}"
+                   placeholder="camera_name" title="Key used in the config file">
+            <button class="remove-btn" onclick="removeCard(this)" title="Remove camera">✕</button>
+        </div>
+
+        <div class="field-grid">
+            <div class="field-group">
+                <label>ID (MXID or index)</label>
+                <input type="text" class="cam-id" value="${escHtml(String(cam.id ?? ''))}"
+                       placeholder="e.g. 18443010… or 0">
+                <span class="field-hint">Device serial string or USB index</span>
+            </div>
+            <div class="field-group">
+                <label>Camera Type</label>
+                <select class="cam-type" onchange="onCameraTypeChange(this)">
+                    ${CAMERA_TYPES.map(t =>
+                        `<option value="${t}" ${t === (cam.camera_type || 'color') ? 'selected' : ''}>${t}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            <div class="field-group">
+                <label>Output</label>
+                <select class="cam-output">
+                    ${OUTPUT_TYPES.map(o =>
+                        `<option value="${o}" ${o === output ? 'selected' : ''}>${o}</option>`
+                    ).join('')}
+                </select>
+            </div>
+            <div class="field-group">
+                <label>Resolution</label>
+                <select class="cam-resolution">
+                    ${buildResolutionOptions(cam.camera_type || 'color', size[0], size[1])}
+                </select>
+            </div>
+            <div class="field-group">
+                <label>FPS</label>
+                <input type="number" class="cam-fps" value="${fps}" min="1" max="60" step="1">
+            </div>
+            <div class="field-group">
+                <label>Timeout (s)</label>
+                <input type="number" class="cam-timeout" value="${cam.wait_timeout ?? 25}" min="1" max="120" step="1">
+            </div>
+            <div class="field-group">
+                <label>Max Retries</label>
+                <input type="number" class="cam-retries" value="${cam.max_retries ?? 2}" min="0" max="10" step="1">
+            </div>
+        </div>
+    `;
+    return card;
+}
+
+function addCamera() {
+    _counter++;
+    const name = `camera_${_counter}`;
+    _config[name] = {
+        id: '',
+        camera_type: 'color',
+        outputs: ['video'],
+        sizes: [[1920, 1080]],
+        fpss: [3],
+        wait_timeout: 25,
+        reconnect_on_timeout: true,
+        max_retries: 2,
+    };
+    const card = buildCard(name, _config[name]);
+    document.getElementById('cameraCards').appendChild(card);
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    card.querySelector('.cam-id').focus();
+}
+
+function removeCard(btn) {
+    btn.closest('.camera-card').remove();
+}
+
+function collectConfig() {
+    const result = {};
+    document.querySelectorAll('.camera-card').forEach(card => {
+        const name = card.querySelector('.cam-name').value.trim();
+        if (!name) return;
+
+        const idRaw    = card.querySelector('.cam-id').value.trim();
+        const id       = /^\d+$/.test(idRaw) ? parseInt(idRaw) : idRaw;
+        const type     = card.querySelector('.cam-type').value;
+        const output   = card.querySelector('.cam-output').value;
+        const resParts = (card.querySelector('.cam-resolution').value || '1920x1080').split('x');
+        const width    = parseInt(resParts[0]) || 1920;
+        const height   = parseInt(resParts[1]) || 1080;
+        const fps      = parseInt(card.querySelector('.cam-fps').value)    || 3;
+        const timeout  = parseFloat(card.querySelector('.cam-timeout').value) || 25;
+        const retries  = parseInt(card.querySelector('.cam-retries').value)  || 2;
+
+        const entry = {
+            id,
+            camera_type: type,
+            outputs: [output],
+            sizes:   [[width, height]],
+            fpss:    [fps],
+            wait_timeout: timeout,
+            reconnect_on_timeout: true,
+            max_retries: retries,
+        };
+
+        // Initial exposure/ISO/focus are no longer editable here — they're tuned live on
+        // the Controls page. Carry forward whatever was already in the loaded config.
+        let settings = {};
+        try { settings = JSON.parse(card.dataset.settings || '{}'); } catch (e) { settings = {}; }
+        if (Object.keys(settings).length) entry.settings = settings;
+
+        result[name] = entry;
+    });
+    return result;
+}
+
+async function saveOnly() {
+    const data = collectConfig();
+    if (!Object.keys(data).length) { showFlash('No cameras to save', 'error'); return; }
+    try {
+        const resp = await fetch('/api/camera_config', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(data),
+        });
+        const result = await resp.json();
+        if (!resp.ok) { showFlash(errorText(result, 'Save failed'), 'error'); return; }
+        _config = data;
+        showFlash(result.message || 'Config saved', 'success');
+    } catch (e) {
+        showFlash('Connection error', 'error');
+    }
+}
+
+async function applyAndReload() {
+    const data = collectConfig();
+    if (!Object.keys(data).length) { showFlash('No cameras to save', 'error'); return; }
+
+    const spinner = document.getElementById('reloadSpinner');
+    spinner.style.display = 'inline';
+
+    try {
+        const resp = await fetch('/api/cameras/reload', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(data),
+        });
+        const result = await resp.json();
+        if (!resp.ok) { showFlash(errorText(result, 'Reload failed'), 'error'); return; }
+        _config = data;
+        const cams = result.cameras ? result.cameras.join(', ') : '';
+        showFlash(`Cameras reloaded: ${cams}`, 'success');
+    } catch (e) {
+        showFlash('Connection error', 'error');
+    } finally {
+        spinner.style.display = 'none';
+    }
+}
+
+function onCameraTypeChange(select) {
+    const card = select.closest('.camera-card');
+    const resSel = card.querySelector('.cam-resolution');
+    const newType = select.value;
+    // Default to the first resolution for the new sensor type
+    const list = getResolutions(newType);
+    resSel.innerHTML = list.map(r =>
+        `<option value="${r.w}x${r.h}">${r.label}</option>`
+    ).join('');
+}
+
+function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}

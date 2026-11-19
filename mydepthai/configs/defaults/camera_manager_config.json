@@ -1,0 +1,25 @@
+{
+    "camera_1": {
+        "id": "169.254.1.222",
+        "camera_type": "color",
+        "outputs": [
+            "video"
+        ],
+        "sizes": [
+            [
+                3840,
+                2160
+            ]
+        ],
+        "fpss": [
+            3
+        ],
+        "wait_timeout": 120,
+        "reconnect_on_timeout": true,
+        "max_retries": 2,
+        "settings": {
+            "exposure": 20000,
+            "iso": 400
+        }
+    }
+}
