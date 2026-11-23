@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mydepthai"
-version = "0.1.1"
+version = "0.1.2"
 description = "Scripts for depthai and cv2 cameras"
 authors = [{name = "porteratzo", email = "44075849+porteratzo@users.noreply.github.com"}]
 license = "MIT"
@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     # Not on PyPI: pinned to a release tag of the public repository.
-    "tep-shared @ git+https://github.com/porteratzo/tep-shared.git@v0.1.0",
+    "tep-shared @ git+https://github.com/porteratzo/tep-shared.git@v0.2.0",
     "numpy>=1.24.0",
     "porter-bench>=0.2.0",
     "opencv-python>=4.8.0",

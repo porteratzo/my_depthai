@@ -13,7 +13,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from threading import Event, RLock, Thread
+from threading import Event, RLock, Thread, current_thread
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import depthai as dai
@@ -25,6 +25,9 @@ from ..depthai_controllers.basic_dai_camera import BasicDAICamera
 from ..depthai_controllers.modules.camera_config_module import CameraConfigModule
 from .config_utils import validate_camera_config
 from .health import CameraHealth, classify_health
+
+# Total time stop_monitoring()/close_all() wait for in-flight reconnect workers (MD-F1, approved 2026-11-23).
+_RECONNECT_JOIN_TIMEOUT_S = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +92,9 @@ class CameraManager:
         self._monitoring: bool = False
         self._monitor_thread: Optional[Thread] = None
         self._stop_event: Event = Event()
+        # Set by close_all(): a reconnect worker that finishes after this closes its own camera instead of
+        # registering it in a manager that has shut down (it would leak the device handle).
+        self._closed: Event = Event()
         self._last_frame_time: Dict[str, float] = {}
         self._last_metadata: Dict[str, Dict[str, Any]] = {}
         # Cameras already reported as "not found" (log once, not on every polling tick).
@@ -685,15 +691,37 @@ class CameraManager:
         )
 
     def stop_monitoring(self) -> None:
-        """Stop the health monitoring thread."""
+        """Stop the health monitoring thread and wait (bounded) for in-flight reconnect workers."""
         if not self._monitoring:
+            self._join_reconnect_workers(timeout=_RECONNECT_JOIN_TIMEOUT_S)
             return
 
         self._monitoring = False
         self._stop_event.set()
         if self._monitor_thread is not None:
             self._monitor_thread.join(timeout=5.0)
+        self._join_reconnect_workers(timeout=_RECONNECT_JOIN_TIMEOUT_S)
         logger.info("Health monitoring stopped")
+
+    def _join_reconnect_workers(self, timeout: float) -> None:
+        """Wait up to ``timeout`` seconds in total for in-flight reconnect workers to finish.
+
+        Bounded on purpose: a wedged PoE connect cannot be interrupted, and must not hang shutdown. A
+        worker still running afterwards cleans up after itself (see ``_reconnect_camera``).
+        """
+        with self._cameras_lock:
+            workers = list(self._reconnect_threads.values())
+        deadline = time.monotonic() + timeout
+        for worker in workers:
+            if worker is current_thread():
+                continue
+            worker.join(timeout=max(0.0, deadline - time.monotonic()))
+            if worker.is_alive():
+                logger.warning(
+                    "Reconnect worker '%s' still running after %.1fs; it closes its camera when done",
+                    worker.name,
+                    timeout,
+                )
 
     def _reconnect_camera(self, cam_id: str) -> bool:
         """
@@ -732,6 +760,9 @@ class CameraManager:
             # Reinitialize the camera
             cam_config = self.config[cam_id]
             if self._initialize_single_camera(cam_id, cam_config, self._use_superspeed):
+                if self._closed.is_set():
+                    self._close_late_reconnect(cam_id)
+                    return False
                 logger.info("Successfully reconnected camera '%s'", cam_id)
                 return True
 
@@ -744,6 +775,17 @@ class CameraManager:
         finally:
             with self._cameras_lock:
                 self._reconnecting.discard(cam_id)
+
+    def _close_late_reconnect(self, cam_id: str) -> None:
+        """Close a camera that finished reconnecting after close_all(); nobody else will."""
+        with self._cameras_lock:
+            late_camera = self.cameras.pop(cam_id, None)
+        if late_camera is not None:
+            try:
+                late_camera.close(force=True)
+            except Exception as e:
+                logger.warning("Error closing late-reconnected camera '%s': %s", cam_id, e)
+        logger.info("Camera '%s' reconnected after shutdown; closed it again", cam_id)
 
     def _backoff_for(self, cam_id: str) -> ReconnectBackoff:
         """Per-camera reconnect rate limiter, created on first use."""
@@ -763,6 +805,8 @@ class CameraManager:
         The delay between attempts doubles after each failure up to ``reconnect_max_delay``
         and resets on success, so a camera replugged hours later is picked up again.
         """
+        if self._closed.is_set():
+            return
         backoff = self._backoff_for(cam_id)
         if not backoff.ready():
             return
@@ -1082,7 +1126,9 @@ class CameraManager:
         """
         logger.info("Shutting down CameraManager")
 
-        # Stop monitoring first
+        # Tell in-flight reconnect workers not to register what they finish connecting, then stop
+        # monitoring (which waits, bounded, for them).
+        self._closed.set()
         self.stop_monitoring()
 
         with self._cameras_lock:

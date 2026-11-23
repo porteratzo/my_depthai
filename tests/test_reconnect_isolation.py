@@ -97,3 +97,53 @@ def test_closing_a_dead_camera_does_not_block_frames_from_healthy_cameras() -> N
     finally:
         release.set()
         t.join(WAIT_S)
+
+
+# --- MD-F1 (approved 2026-11-23): shutdown with a reconnect in flight -----------------------------
+
+
+def _manager_with_late_reconnect(
+    release: threading.Event, started: threading.Event, late: MagicMock
+) -> CameraManager:
+    manager = _manager()
+
+    def fake_init(cam_id: str, _cfg: Dict[str, Any], _ss: bool) -> bool:
+        started.set()
+        release.wait(WAIT_S + 3)  # a PoE connect that outlives shutdown
+        manager.cameras[cam_id] = late  # what the real _initialize_single_camera does on success
+        return True
+
+    manager._initialize_single_camera = fake_init  # type: ignore[method-assign]
+    return manager
+
+
+def test_a_reconnect_finishing_after_close_all_closes_its_own_camera(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("mydepthai.camera_manager.camera_manager._RECONNECT_JOIN_TIMEOUT_S", 0.2)
+    release, started, late = threading.Event(), threading.Event(), MagicMock()
+    manager = _manager_with_late_reconnect(release, started, late)
+    manager.start_monitoring()
+    assert started.wait(WAIT_S), "no reconnect started; test is not exercising shutdown"
+
+    t0 = time.monotonic()
+    manager.close_all()  # bounded: must not wait for the stuck worker
+    assert time.monotonic() - t0 < WAIT_S, "close_all hung on the in-flight reconnect worker"
+
+    release.set()  # the worker now finishes connecting, after shutdown
+    for worker in list(manager._reconnect_threads.values()):
+        worker.join(WAIT_S)
+    late.close.assert_called_with(force=True)  # one worker per camera (both share this mock)
+    assert manager.cameras == {}, "a late reconnect registered a camera in a closed manager"
+
+
+def test_close_all_waits_for_a_reconnect_that_finishes_in_time() -> None:
+    release, started, late = threading.Event(), threading.Event(), MagicMock()
+    manager = _manager_with_late_reconnect(release, started, late)
+    manager.start_monitoring()
+    assert started.wait(WAIT_S)
+    threading.Timer(0.2, release.set).start()
+
+    manager.close_all()  # joins the worker (it ends well inside the 5 s bound)
+
+    assert not any(w.is_alive() for w in manager._reconnect_threads.values())
+    late.close.assert_called_with(force=True)
+    assert manager.cameras == {}
