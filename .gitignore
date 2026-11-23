@@ -28,3 +28,4 @@ dist/
 
 # Local benchmark output (comparison frames saved by benchmark_nv12.py)
 benchmark_images/
+.cache/
