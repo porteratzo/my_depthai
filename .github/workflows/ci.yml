@@ -34,7 +34,7 @@ jobs:
       - name: Mypy
         run: mypy mydepthai
       - name: Tests (no camera attached)
-        run: pytest tests -m "not hardware and not manual" --cov=mydepthai --cov-report=term-missing
+        run: pytest tests -m "not hardware and not manual" --cov=mydepthai --cov-report=term-missing --cov-fail-under=90
 
   build:
     runs-on: ubuntu-latest
